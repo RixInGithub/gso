@@ -184,6 +184,17 @@ void*gsoGetIndex(gso _a, int idx, void*extra) {
 	__builtin_unreachable();
 }
 
+char*gsoSrz(gso _a, size_t*size) {
+	if (size==NULL) return NULL;
+	_(handle)*a = _(toHandle)(_a);
+	_(carefulData) out = {sizeof(char),0,0,NULL};
+	while (a) {
+		// if () {}
+		a=a->next;
+	}
+	return out.data;
+}
+
 __attribute__((destructor)) void _(freeInternals)() {
 	free(_(handles).data);
 }
