@@ -1,0 +1,189 @@
+#include <gso.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdarg.h>
+// #include <stdio.h>
+#define __(a) __gso__##a
+#define _(a) __(a)
+#define DECLCAREFUL(type,name) _(carefulData) _(name) = {sizeof(type),0,0,NULL}
+#define EXTENDBY 30
+
+typedef unsigned char _(c);
+
+// type byte structure:
+// xxxxxttt
+// x - extra
+// t - type
+
+// type = 000, buffer/string type, extra is used for length. if extra==0, contents are "escaped"
+// type = 001, blank buffer type, extra is unused here.
+
+// escaped => meaning:
+// \t\t => \t
+// \t\x00 => \x00
+// \x00 => end of buffer
+
+typedef struct {
+	size_t unit;
+	size_t available;
+	size_t len;
+	void*data;
+} _(carefulData);
+
+typedef struct {
+	size_t size;
+	void*raw;
+	void*escaped;
+} _(buf);
+
+typedef struct _(handle) {
+	bool used;
+	_(c) typeByte;
+	union {
+		_(buf) buffer;
+	};
+	struct _(handle)*next;
+} _(handle);
+
+DECLCAREFUL(_(handle),handles);
+
+bool _(didInit) = false;
+bool _(ignoreRest) = false;
+
+static void _(init)() {
+	if (_(didInit)) return;
+	// ...
+	_(didInit) = true;
+}
+
+// the dose is the poison.
+void _(extend)(_(carefulData)*dat) {
+	size_t old = dat->available;
+	dat->available += EXTENDBY;
+	dat->data = realloc(dat->data,dat->available*dat->unit);
+	memset((void*)((uintptr_t)(dat->data)+(old*dat->unit)),0,(EXTENDBY*dat->unit));
+}
+
+_(handle)*_(toHandle)(gso ref) {
+	_(init)();
+	return (_(handle)*)_(handles).data + ref;
+}
+
+gso gsoFromBuf(void*inp, size_t size) {
+	_(c) typeByte = (size<32)?(size<<3):0;
+	if (size==0) typeByte=1;
+	_(init)();
+	if (_(handles).len==_(handles).available) _(extend)(&_(handles));
+	_(handle)*h = _(handles).data;
+	size_t count = 0;
+	_(handle)*where = NULL;
+	while (count<(_(handles).available-1)) {
+		if (!(h[count].used)) {
+			where = &h[count];
+			break;
+		}
+		count++;
+	}
+	memset(where, 0, sizeof(_(handle)));
+	where->used=true;
+	where->typeByte=typeByte;
+	if ((typeByte&7)!=0) return count;
+	where->buffer.size=size;
+	where->buffer.raw=malloc(size);
+	memcpy(where->buffer.raw,inp,size);
+	return count;
+}
+
+gso gsoFromCStr(char*inp) {
+	return gsoFromBuf(inp,strlen(inp));
+}
+
+void gsoAppend(gso _a, gso _b) {
+	_(handle)*a = _(toHandle)(_a);
+	_(handle)*b = _(toHandle)(_b);
+	while (a->next) a=a->next; // we only need the last one, lol
+	a->next=b;
+}
+
+gso gsoCatBufs(gso _bufs) {
+	_(handle)*bufs = _(toHandle)(_bufs);
+	size_t needed = 0;
+	size_t fulfilled = 0;
+	_(handle)*a = bufs;
+	while (a) {
+		if ((a->typeByte&7)==0) needed+=a->buffer.size;
+		// printf("%d\n",a->next==a);
+		a=a->next;
+	}
+	_(c)*new = malloc(needed);
+	while ((bufs)&&(fulfilled<needed)) {
+		if ((bufs->typeByte&7)==0) {
+			memcpy(new+fulfilled,bufs->buffer.raw,bufs->buffer.size);
+			fulfilled+=bufs->buffer.size;
+		}
+		bufs=bufs->next;
+	}
+	gso ref = gsoFromBuf(new,fulfilled);
+	free(new); // new got remalloced
+	return ref;
+}
+
+void gsoFree(gso _a) {
+	_(handle)*a = _(toHandle)(_a);
+	while (a) {
+		switch (a->typeByte&7) {
+			case 0:
+				free(a->buffer.raw);
+				if (a->buffer.escaped) free(a->buffer.escaped);
+				break;
+			default:
+				break; // idfk
+		}
+		a->used=false;
+		a=a->next;
+	}
+}
+
+void gsoFreeN(unsigned int len, ...) {
+	va_list a;
+	va_start(a,len);
+	unsigned int count = 0;
+	while (count<len) {
+		gsoFree(va_arg(a,gso));
+		count++;
+	}
+	va_end(a);
+}
+
+void*gsoGetIndex(gso _a, int idx, void*extra) {
+	_(handle)*a = _(toHandle)(_a);
+	while ((a)&&(idx)) {
+		a=a->next;
+		idx--;
+	}
+	if (idx>0) return NULL;
+	unsigned char*aa;
+	switch (a->typeByte&7) {
+		case 0:
+			if (extra) *(size_t*)extra=a->buffer.size;
+			unsigned char*copy = calloc(a->buffer.size+1,sizeof(unsigned char));
+			memcpy(copy,a->buffer.raw,a->buffer.size);
+			unsigned char**yay = malloc(sizeof(unsigned char*));
+			*yay = copy;
+			return yay;
+		case 1:
+			aa=calloc(1,sizeof(unsigned char));
+			unsigned char**bb=calloc(1,sizeof(unsigned char*));
+			*bb=aa;
+			return bb;
+		default:
+			return NULL;
+	}
+	__builtin_unreachable();
+}
+
+__attribute__((destructor)) void _(freeInternals)() {
+	free(_(handles).data);
+}
