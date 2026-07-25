@@ -4,11 +4,12 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
-// #include <stdio.h>
+#include <stdio.h>
 #define __(a) __gso__##a
 #define _(a) __(a)
 #define DECLCAREFUL(type,name) _(carefulData) _(name) = {sizeof(type),0,0,NULL}
 #define EXTENDBY 30
+#define THINGTHATIUSETWICE {_(extend)(&out);dat=out.data;} // im not tracking the count of times im using this macro in its name
 
 typedef unsigned char _(c);
 
@@ -35,6 +36,7 @@ typedef struct {
 typedef struct {
 	size_t size;
 	void*raw;
+	size_t escSz;
 	void*escaped;
 } _(buf);
 
@@ -71,6 +73,33 @@ _(handle)*_(toHandle)(gso ref) {
 	return (_(handle)*)_(handles).data + ref;
 }
 
+char*_(escapeBuf)(_(buf)*b,size_t*size) {
+	if (!(b->escaped)) {
+		_(carefulData) out = {sizeof(char),0,0,NULL};
+		char*dat = NULL;
+		size_t count = 0;
+		while (count<b->size) {
+			if (out.len+1>=out.available) THINGTHATIUSETWICE;
+			char ch = ((char*)(b->raw))[count];
+			switch (ch) {
+				case 0:
+				case 9:
+					dat[out.len++] = 9;
+				default:
+					dat[out.len++] = ch;
+					break;
+			}
+			count++;
+		}
+		if (out.len+1>=out.available) THINGTHATIUSETWICE;
+		dat[out.len++] = 0;
+		b->escaped = dat;
+		b->escSz = out.len;
+	}
+	*size = b->escSz;
+	return b->escaped;
+}
+
 gso gsoFromBuf(void*inp, size_t size) {
 	_(c) typeByte = (size<32)?(size<<3):0;
 	if (size==0) typeByte=1;
@@ -79,7 +108,7 @@ gso gsoFromBuf(void*inp, size_t size) {
 	_(handle)*h = _(handles).data;
 	size_t count = 0;
 	_(handle)*where = NULL;
-	while (count<(_(handles).available-1)) {
+	while (count<_(handles).available) {
 		if (!(h[count].used)) {
 			where = &h[count];
 			break;
@@ -188,11 +217,27 @@ char*gsoSrz(gso _a, size_t*size) {
 	if (size==NULL) return NULL;
 	_(handle)*a = _(toHandle)(_a);
 	_(carefulData) out = {sizeof(char),0,0,NULL};
+	char*dat = NULL;
 	while (a) {
-		// if () {}
+		if (out.len+1>=out.available) THINGTHATIUSETWICE;
+		dat[out.len++] = a->typeByte;
+		char*escaped;
+		size_t escSz;
+		switch (a->typeByte&7) {
+			case 0:
+				escaped = a->buffer.raw;
+				escSz = a->buffer.size;
+				if ((a->typeByte>>3)==0) escaped = _(escapeBuf)(&(a->buffer),&escSz);
+				while (out.len+escSz>=out.available) THINGTHATIUSETWICE;
+				memcpy(dat+out.len,escaped,escSz);
+				out.len+=escSz;
+				break;
+			default: break; // 1 goes here
+		}
 		a=a->next;
 	}
-	return out.data;
+	*size = out.len;
+	return dat;
 }
 
 __attribute__((destructor)) void _(freeInternals)() {

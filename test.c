@@ -5,6 +5,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
+#include <unistd.h>
 
 int main() {
 	#ifndef TEST
@@ -29,5 +30,18 @@ int main() {
 			count--;
 		}
 		return 0;
+	#endif
+	#if TEST == 1
+		char pStr[] = "oneTwo\three\x00" "123!!!!!!!!!!!!!!!!!";
+		gso user, pass;
+		char*buf;
+		size_t size;
+		user = gsoFromCStr("grad");
+		pass = gsoFromBuf(pStr,sizeof(pStr)-1);
+		gsoAppend(user, pass);
+		buf = gsoSrz(user,&size);
+		write(1, buf, size);
+		free(buf);
+		gsoFree(user);
 	#endif
 }
