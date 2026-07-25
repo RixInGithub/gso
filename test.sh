@@ -5,4 +5,4 @@ rm -f gso.o
 [ ! -f gso.o ] && CC="$CC" ./build.sh
 o=${1:+-o $1}
 shift
-$CC test.c gso.o $o -I. -g "$@" -O0 -fsanitize=address
+$CC test.c gso.o $o -I. -g "$@"

@@ -240,6 +240,10 @@ char*gsoSrz(gso _a, size_t*size) {
 	return dat;
 }
 
+gso gsoUnsrz(char*dat, size_t sz) {
+	return 0; // TODO
+}
+
 __attribute__((destructor)) void _(freeInternals)() {
 	free(_(handles).data);
 }

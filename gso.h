@@ -15,4 +15,5 @@ void gsoFreeN(unsigned int,...);
 void gsoFree(gso);
 
 char*gsoSrz(gso,size_t*);
+gso gsoUnsrz(char*,size_t);
 #endif
