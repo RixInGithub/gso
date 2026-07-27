@@ -1,5 +1,4 @@
 #include <gso.h>
-#include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -20,6 +19,7 @@ typedef unsigned char _(c);
 
 // type = 000, buffer/string type, extra is used for length. if extra==0, contents are "escaped"
 // type = 001, blank buffer type, extra is unused here.
+// type = 010, bool type, if extra is nonzero, the bool represents a truthy value, else, it represents a falsy value.
 
 // escaped => meaning:
 // \t\t => \t
@@ -100,39 +100,60 @@ char*_(escapeBuf)(_(buf)*b,size_t*size) {
 	return b->escaped;
 }
 
-gso gsoFromBuf(void*inp, size_t size) {
-	_(c) typeByte = (size<32)?(size<<3):0;
-	if (size==0) typeByte=1;
+_(handle)*_(findH)(gso*idx) {
+	static gso placeholder;
 	_(init)();
 	if (_(handles).len==_(handles).available) _(extend)(&_(handles));
 	_(handle)*h = _(handles).data;
-	size_t count = 0;
-	_(handle)*where = NULL;
-	while (count<_(handles).available) {
-		if (!(h[count].used)) {
-			where = &h[count];
+	if (idx==NULL) idx=&placeholder;
+	*idx = 0;
+	_(handle)*o = NULL;
+	while (*idx<_(handles).len) {
+		if (!(h[*idx].used)) {
+			o = &h[*idx];
 			break;
 		}
-		count++;
+		(*idx)++;
 	}
-	memset(where, 0, sizeof(_(handle)));
+	if (o==NULL) {
+		*idx = _(handles).len++;
+		o=&h[*idx];
+	}
+	memset(o, 0, sizeof(_(handle)));
+	return o;
+}
+
+gso gsoFromBuf(void*inp, size_t size) {
+	_(c) typeByte = (size<32)?(size<<3):0;
+	if (size==0) typeByte=1;
+	gso res;
+	_(handle)*where = _(findH)(&res);
 	where->used=true;
 	where->typeByte=typeByte;
-	if ((typeByte&7)!=0) return count;
+	if ((typeByte&7)!=0) return res;
 	where->buffer.size=size;
 	where->buffer.raw=malloc(size);
 	memcpy(where->buffer.raw,inp,size);
-	return count;
+	return res;
 }
 
 gso gsoFromCStr(char*inp) {
 	return gsoFromBuf(inp,strlen(inp));
 }
 
+gso gsoFromBool(bool a) {
+	gso res;
+	_(handle)*where = _(findH)(&res);
+	where->used = true;
+	where->typeByte = (a?8:0)|2;
+	return res;
+}
+
 void gsoAppend(gso _a, gso _b) {
 	_(handle)*a = _(toHandle)(_a);
 	_(handle)*b = _(toHandle)(_b);
 	while (a->next) a=a->next; // we only need the last one, lol
+	// TODO: copy b
 	a->next=b;
 }
 
@@ -232,7 +253,7 @@ char*gsoSrz(gso _a, size_t*size) {
 				memcpy(dat+out.len,escaped,escSz);
 				out.len+=escSz;
 				break;
-			default: break; // 1 goes here
+			default: break; // 1 and 2 go here
 		}
 		a=a->next;
 	}
@@ -240,8 +261,49 @@ char*gsoSrz(gso _a, size_t*size) {
 	return dat;
 }
 
-gso gsoUnsrz(char*dat, size_t sz) {
-	return 0; // TODO
+gso gsoParse(char*dat, size_t sz) {
+	struct {
+		bool iWantMore; // the result of malformed gso? segfault!
+		bool inTypeByte;
+		_(c) tBType;
+		_(c) tBMeta;
+		bool big;
+	} _ = {
+		sz==0,
+		true,
+		0, 0,
+		false
+	};
+	size_t count = 0;
+	gso ret;
+	_(handle)*first = NULL;
+	while ((count<sz)||(_.iWantMore)) {
+		char ch = dat[count];
+		if (_.inTypeByte) {
+			_.tBType = ch&7;
+			_.tBMeta = ch>>3;
+			_.inTypeByte = true;
+			if (!(first)) first = _(findH)(&ret);
+			switch (_.tBType) {
+				case 0:
+					_.inTypeByte = false;
+					_.big = _.tBMeta==0;
+					_.iWantMore = true;
+					break;
+				default: break;
+			}
+			count++;
+			continue;
+		}
+		switch (_.tBType) {
+			case 0:
+				
+				break;
+			default: break;
+		}
+		count++;
+	}
+	return ret;
 }
 
 __attribute__((destructor)) void _(freeInternals)() {
