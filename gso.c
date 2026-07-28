@@ -52,9 +52,8 @@ typedef struct _(handle) {
 DECLCAREFUL(_(handle),handles);
 
 bool _(didInit) = false;
-bool _(ignoreRest) = false;
 
-static void _(init)() {
+static void _(init)(void) {
 	if (_(didInit)) return;
 	// ...
 	_(didInit) = true;
@@ -306,6 +305,26 @@ gso gsoParse(char*dat, size_t sz) {
 	return ret;
 }
 
-__attribute__((destructor)) void _(freeInternals)() {
+int gsoGetType(gso _a, int idx) {
+	_(handle)*a = _(toHandle)(_a);
+	while ((a)&&(idx)) {
+		a=a->next;
+		idx--;
+	}
+	if (idx>0) return -1;
+	return a->typeByte&7;
+}
+
+size_t gsoLen(gso _a) {
+	size_t c = 0;
+	_(handle)*a = _(toHandle)(_a);
+	while (a) {
+		c++;
+		a=a->next;
+	}
+	return c;
+}
+
+__attribute__((destructor)) void _(freeInternals)(void) {
 	free(_(handles).data);
 }

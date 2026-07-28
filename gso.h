@@ -12,10 +12,13 @@ void gsoAppend(gso,gso);
 
 gso gsoCatBufs(gso);
 void*gsoGetIndex(gso,int,void*);
+int gsoGetType(gso,int);
+size_t gsoLen(gso);
 
 void gsoFreeN(unsigned int,...);
 void gsoFree(gso);
 
 char*gsoSrz(gso,size_t*);
 gso gsoParse(char*,size_t);
+
 #endif
