@@ -20,5 +20,4 @@ void gsoFree(gso);
 
 char*gsoSrz(gso,size_t*);
 gso gsoParse(char*,size_t);
-
 #endif
