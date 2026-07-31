@@ -33,7 +33,7 @@ int main() {
 	#endif
 	#if TEST == 1
 		char pStr[] = "oneTwo\three\x00" "123!!!!!!!!!!!!!!!!!";
-		gso user, pass;
+		gso user, pass, uCp;
 		char*buf;
 		size_t size;
 		user = gsoFromCStr("grad");
@@ -41,7 +41,8 @@ int main() {
 		gsoAppend(user, pass);
 		buf = gsoSrz(user,&size);
 		write(1, buf, size);
+		uCp = gsoParse(buf,size);
 		free(buf);
-		gsoFree(user);
+		gsoFreeN(2, user, uCp);
 	#endif
 }

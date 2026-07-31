@@ -15,7 +15,7 @@ void*gsoGetIndex(gso,int,void*);
 int gsoGetType(gso,int);
 size_t gsoLen(gso);
 
-void gsoFreeN(unsigned int,...);
+void gsoFreeN(size_t,...);
 void gsoFree(gso);
 
 char*gsoSrz(gso,size_t*);

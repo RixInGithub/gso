@@ -8,7 +8,8 @@
 #define _(a) __(a)
 #define DECLCAREFUL(type,name) _(carefulData) _(name) = {sizeof(type),0,0,NULL}
 #define EXTENDBY 30
-#define THINGTHATIUSETWICE {_(extend)(&out);dat=out.data;} // im not tracking the count of times im using this macro in its name
+#define EXTENDTHING(a,b) {_(extend)(&(a));b=(a).data;}
+#define THINGTHATIUSETWICE EXTENDTHING(out,dat) // im not tracking the count of times im using this macro in its name
 
 typedef unsigned char _(c);
 
@@ -195,10 +196,10 @@ void gsoFree(gso _a) {
 	}
 }
 
-void gsoFreeN(unsigned int len, ...) {
+void gsoFreeN(size_t len, ...) {
 	va_list a;
 	va_start(a,len);
-	unsigned int count = 0;
+	size_t count = 0;
 	while (count<len) {
 		gsoFree(va_arg(a,gso));
 		count++;
@@ -214,6 +215,7 @@ void*gsoGetIndex(gso _a, int idx, void*extra) {
 	}
 	if (idx>0) return NULL;
 	unsigned char*aa;
+	bool*booler;
 	switch (a->typeByte&7) {
 		case 0:
 			if (extra) *(size_t*)extra=a->buffer.size;
@@ -227,6 +229,10 @@ void*gsoGetIndex(gso _a, int idx, void*extra) {
 			unsigned char**bb=calloc(1,sizeof(unsigned char*));
 			*bb=aa;
 			return bb;
+		case 2:
+			booler=calloc(1,sizeof(bool));
+			*booler = a->typeByte>>3;
+			return booler;
 		default:
 			return NULL;
 	}
@@ -261,44 +267,106 @@ char*gsoSrz(gso _a, size_t*size) {
 }
 
 gso gsoParse(char*dat, size_t sz) {
+	#define HLATEST switch ((int)haveRet) { \
+		case 1: \
+			gsoAppend(ret,latest); \
+			break; \
+		default: \
+			ret=latest; \
+			haveRet=true; \
+			break; \
+	}
+	#define ENDBUF { \
+		_.inTypeByte = true; \
+		_.iWantMore = false; \
+		latest = gsoFromBuf(_.buf.data, _.buf.len); \
+		free(_.buf.data); \
+		_.buf.len=0; \
+		_.buf.available=0; \
+		_.buf.data=NULL; \
+		HLATEST; \
+	}
 	struct {
 		bool iWantMore; // the result of malformed gso? segfault!
 		bool inTypeByte;
 		_(c) tBType;
 		_(c) tBMeta;
 		bool big;
+		_(c) left;
+		bool prevTab;
+		_(carefulData) buf;
 	} _ = {
 		sz==0,
 		true,
 		0, 0,
-		false
+		false,
+		0,
+		false,
+		{sizeof(_(c)),0,0,NULL}
 	};
 	size_t count = 0;
+	bool haveRet = false;
 	gso ret;
-	_(handle)*first = NULL;
+	gso latest;
+	char*charBuf;
 	while ((count<sz)||(_.iWantMore)) {
 		char ch = dat[count];
-		if (_.inTypeByte) {
-			_.tBType = ch&7;
-			_.tBMeta = ch>>3;
-			_.inTypeByte = true;
-			if (!(first)) first = _(findH)(&ret);
-			switch (_.tBType) {
-				case 0:
-					_.inTypeByte = false;
-					_.big = _.tBMeta==0;
-					_.iWantMore = true;
-					break;
-				default: break;
-			}
-			count++;
-			continue;
-		}
-		switch (_.tBType) {
-			case 0:
-				
+		switch ((int)_.inTypeByte) {
+			case 1:
+				_.tBType = ch&7;
+				_.tBMeta = ch>>3;
+				_.inTypeByte = true;
+				switch (_.tBType) {
+					case 0:
+						_.inTypeByte = false;
+						_.big = _.tBMeta==0;
+						_.iWantMore = true;
+						_.left = _.tBMeta;
+						break;
+					case 1:
+						latest = gsoFromBuf(NULL,0);
+						HLATEST;
+						break;
+					case 2:
+						latest = gsoFromBool(_.tBMeta);
+						HLATEST;
+					default: break;
+				}
 				break;
-			default: break;
+			default:
+				switch (_.tBType) {
+					case 0:
+						if (_.buf.len+1>=_.buf.available) EXTENDTHING(_.buf,charBuf);
+						charBuf = _.buf.data;
+						if (_.big) {
+							switch ((int)_.prevTab) {
+								case 1:
+									_.prevTab = false;
+									charBuf[_.buf.len++] = ch;
+									break;
+								default:
+									switch (ch) {
+										case 9:
+											_.prevTab = true;
+											break;
+										case 0:
+											if (true) ENDBUF;
+											break;
+										default:
+											charBuf[_.buf.len++] = ch;
+											break;
+									}
+									break;
+							}
+							break;
+						}
+						charBuf[_.buf.len++] = ch;
+						_.left--;
+						if (_.left==0) ENDBUF;
+						break;
+					default: break;
+				}
+				break;
 		}
 		count++;
 	}
@@ -307,20 +375,20 @@ gso gsoParse(char*dat, size_t sz) {
 
 int gsoGetType(gso _a, int idx) {
 	_(handle)*a = _(toHandle)(_a);
-	while ((a)&&(idx)) {
+	while ((a)&&(idx>0)) {
 		a=a->next;
 		idx--;
 	}
 	if (idx>0) return -1;
-	return a->typeByte&7;
+	return (a->typeByte)&7;
 }
 
 size_t gsoLen(gso _a) {
 	size_t c = 0;
 	_(handle)*a = _(toHandle)(_a);
 	while (a) {
-		c++;
 		a=a->next;
+		c++;
 	}
 	return c;
 }
