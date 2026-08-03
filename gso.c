@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
-#include <stdio.h>
+// #include <stdio.h>
 #define __(a) __gso__##a
 #define _(a) __(a)
 #define DECLCAREFUL(type,name) _(carefulData) _(name) = {sizeof(type),0,0,NULL}
