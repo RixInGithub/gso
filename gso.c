@@ -1,9 +1,9 @@
 #include <gso.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
-// #include <stdio.h>
+#include <math.h>
+#include <stdio.h>
 #define __(a) __gso__##a
 #define _(a) __(a)
 #define DECLCAREFUL(type,name) _(carefulData) _(name) = {sizeof(type),0,0,NULL}
@@ -21,6 +21,10 @@ typedef unsigned char _(c);
 // type = 000, buffer/string type, extra is used for length. if extra==0, contents are "escaped"
 // type = 001, blank buffer type, extra is unused here.
 // type = 010, bool type, if extra is nonzero, the bool represents a truthy value, else, it represents a falsy value.
+// type = 011, u8 type
+// type = 100, u16 type
+// type = 101, u32 type
+// type = 110, u64 type
 
 // escaped => meaning:
 // \t\t => \t
@@ -46,6 +50,7 @@ typedef struct _(handle) {
 	_(c) typeByte;
 	union {
 		_(buf) buffer;
+		uint64_t num;
 	};
 	struct _(handle)*next;
 } _(handle);
@@ -123,6 +128,16 @@ _(handle)*_(findH)(gso*idx) {
 	return o;
 }
 
+static int _(pow)(int a, int b) {
+	if (b<0) return 0; // even 0.5 doesnt get rounded into 1, so calculating is pointless when this returns an int.
+	int out = 1;
+	while (b>0) {
+		out *= a;
+		b--;
+	}
+	return out;
+}
+
 gso gsoFromBuf(void*inp, size_t size) {
 	_(c) typeByte = (size<32)?(size<<3):0;
 	if (size==0) typeByte=1;
@@ -146,6 +161,15 @@ gso gsoFromBool(bool a) {
 	_(handle)*where = _(findH)(&res);
 	where->used = true;
 	where->typeByte = (a?8:0)|2;
+	return res;
+}
+
+gso gsoFromU8(uint8_t a) {
+	gso res;
+	_(handle)*where = _(findH)(&res);
+	where->used = true;
+	where->typeByte = 3;
+	where->num = a;
 	return res;
 }
 
@@ -216,6 +240,10 @@ void*gsoGetIndex(gso _a, int idx, void*extra) {
 	if (idx>0) return NULL;
 	unsigned char*aa;
 	bool*booler;
+	uint8_t*u8;
+	uint16_t*u16;
+	uint32_t*u32;
+	uint64_t*u64;
 	switch (a->typeByte&7) {
 		case 0:
 			if (extra) *(size_t*)extra=a->buffer.size;
@@ -233,6 +261,22 @@ void*gsoGetIndex(gso _a, int idx, void*extra) {
 			booler=calloc(1,sizeof(bool));
 			*booler = a->typeByte>>3;
 			return booler;
+		case 3:
+			u8=calloc(1,sizeof(uint8_t));
+			*u8 = a->num&255;
+			return u8;
+		case 4:
+			u16=calloc(1,sizeof(uint16_t));
+			*u16 = a->num&65535;
+			return u16;
+		case 5:
+			u32=calloc(1,sizeof(uint32_t));
+			*u32 = a->num&4294967295;
+			return u32;
+		case 6:
+			u64=calloc(1,sizeof(uint64_t));
+			*u64 = a->num;
+			return u64;
 		default:
 			return NULL;
 	}
@@ -249,6 +293,7 @@ char*gsoSrz(gso _a, size_t*size) {
 		dat[out.len++] = a->typeByte;
 		char*escaped;
 		size_t escSz;
+		size_t nSz;
 		switch (a->typeByte&7) {
 			case 0:
 				escaped = a->buffer.raw;
@@ -257,6 +302,15 @@ char*gsoSrz(gso _a, size_t*size) {
 				while (out.len+escSz>=out.available) THINGTHATIUSETWICE;
 				memcpy(dat+out.len,escaped,escSz);
 				out.len+=escSz;
+				break;
+			case 3: // u8
+			case 4: // u16
+			case 5: // u32
+			case 6: // u64
+				nSz = _(pow)(2,(a->typeByte&7)-3);
+				while (out.len+nSz>=out.available) THINGTHATIUSETWICE;
+				memcpy(dat+out.len,&(a->num),nSz);
+				out.len+=nSz;
 				break;
 			default: break; // 1 and 2 go here
 		}
@@ -295,6 +349,9 @@ gso gsoParse(char*dat, size_t sz) {
 		_(c) left;
 		bool prevTab;
 		_(carefulData) buf;
+		_(c) numLen;
+		_(c) collected;
+		uint64_t n;
 	} _ = {
 		sz==0,
 		true,
@@ -302,7 +359,8 @@ gso gsoParse(char*dat, size_t sz) {
 		false,
 		0,
 		false,
-		{sizeof(_(c)),0,0,NULL}
+		{sizeof(_(c)),0,0,NULL},
+		0, 0
 	};
 	size_t count = 0;
 	bool haveRet = false;
@@ -330,6 +388,14 @@ gso gsoParse(char*dat, size_t sz) {
 					case 2:
 						latest = gsoFromBool(_.tBMeta);
 						HLATEST;
+					case 3:
+					case 4:
+					case 5:
+					case 6:
+						_.inTypeByte = false;
+						_.iWantMore = true;
+						_.numLen = _(pow)(2,_.tBType-3);
+						_.n=0;
 					default: break;
 				}
 				break;
@@ -363,6 +429,23 @@ gso gsoParse(char*dat, size_t sz) {
 						charBuf[_.buf.len++] = ch;
 						_.left--;
 						if (_.left==0) ENDBUF;
+						break;
+					case 3:
+					case 4:
+					case 5:
+					case 6:
+						_.n |= ch<<(_.collected*8);
+						_.collected++;
+						if (_.collected==_.numLen) {
+							// diy handle creation!
+							_(handle)*where = _(findH)(&latest);
+							where->used = true;
+							where->typeByte = _.tBType;
+							where->num = _.n;
+							_.inTypeByte = true;
+							_.iWantMore = false;
+							HLATEST;
+						}
 						break;
 					default: break;
 				}
