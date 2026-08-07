@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <endian.h>
 // #include <stdio.h>
 #define __(a) __gso__##a
 #define _(a) __(a)
