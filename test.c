@@ -36,13 +36,13 @@ int main() {
 		gso user, pass, uCp;
 		char*buf;
 		size_t size;
-		user = gsoFromU8(0xa9);
+		user = gsoFromCStr("grad");
 		pass = gsoFromBuf(pStr,sizeof(pStr)-1);
 		gsoAppend(user, pass);
 		buf = gsoSrz(user,&size);
 		write(1, buf, size);
-		// uCp = gsoParse(buf,size);
+		uCp = gsoParse(buf,size);
 		free(buf);
-		gsoFreeN(1, user);
+		gsoFreeN(2, user, uCp);
 	#endif
 }

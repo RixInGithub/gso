@@ -8,9 +8,9 @@ gso gsoFromCStr(char*);
 gso gsoFromBuf(void*,size_t);
 gso gsoFromBool(bool);
 gso gsoFromU8(uint8_t);
-// gso gsoFromU16(uint16_t);
-// gso gsoFromU32(uint32_t);
-// gso gsoFromU64(uint64_t);
+gso gsoFromU16(uint16_t);
+gso gsoFromU32(uint32_t);
+gso gsoFromU64(uint64_t);
 
 void gsoAppend(gso,gso);
 // gso gsoSlice(gso,int,int);

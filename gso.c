@@ -2,8 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <math.h>
-#include <stdio.h>
+// #include <stdio.h>
 #define __(a) __gso__##a
 #define _(a) __(a)
 #define DECLCAREFUL(type,name) _(carefulData) _(name) = {sizeof(type),0,0,NULL}
@@ -12,6 +11,8 @@
 #define THINGTHATIUSETWICE EXTENDTHING(out,dat) // im not tracking the count of times im using this macro in its name
 
 typedef unsigned char _(c);
+
+// numbers are ALWAYS little endian. no excuses.
 
 // type byte structure:
 // xxxxxttt
@@ -164,14 +165,21 @@ gso gsoFromBool(bool a) {
 	return res;
 }
 
-gso gsoFromU8(uint8_t a) {
-	gso res;
-	_(handle)*where = _(findH)(&res);
-	where->used = true;
-	where->typeByte = 3;
-	where->num = a;
-	return res;
+#define MK_NUM_FN(n,type) gso gsoFromU##n(uint##n##_t a) { \
+	gso res; \
+	_(handle)*where = _(findH)(&res); \
+	where->used = true; \
+	where->typeByte = type; \
+	where->num = htole64(a); \
+	return res; \
 }
+
+MK_NUM_FN(8,3)
+MK_NUM_FN(16,4)
+MK_NUM_FN(32,5)
+MK_NUM_FN(64,6)
+
+#undef MK_NUM_FN
 
 void gsoAppend(gso _a, gso _b) {
 	_(handle)*a = _(toHandle)(_a);
@@ -240,10 +248,12 @@ void*gsoGetIndex(gso _a, int idx, void*extra) {
 	if (idx>0) return NULL;
 	unsigned char*aa;
 	bool*booler;
+	uint64_t hostNum=0;
 	uint8_t*u8;
 	uint16_t*u16;
 	uint32_t*u32;
 	uint64_t*u64;
+	if (a->num!=0) hostNum = le64toh(a->num); // convert little endian to host order for caller convenience
 	switch (a->typeByte&7) {
 		case 0:
 			if (extra) *(size_t*)extra=a->buffer.size;
@@ -263,19 +273,19 @@ void*gsoGetIndex(gso _a, int idx, void*extra) {
 			return booler;
 		case 3:
 			u8=calloc(1,sizeof(uint8_t));
-			*u8 = a->num&255;
+			*u8 = hostNum&255;
 			return u8;
 		case 4:
 			u16=calloc(1,sizeof(uint16_t));
-			*u16 = a->num&65535;
+			*u16 = hostNum&65535;
 			return u16;
 		case 5:
 			u32=calloc(1,sizeof(uint32_t));
-			*u32 = a->num&4294967295;
+			*u32 = hostNum&4294967295;
 			return u32;
 		case 6:
 			u64=calloc(1,sizeof(uint64_t));
-			*u64 = a->num;
+			*u64 = hostNum;
 			return u64;
 		default:
 			return NULL;
@@ -309,7 +319,7 @@ char*gsoSrz(gso _a, size_t*size) {
 			case 6: // u64
 				nSz = _(pow)(2,(a->typeByte&7)-3);
 				while (out.len+nSz>=out.available) THINGTHATIUSETWICE;
-				memcpy(dat+out.len,&(a->num),nSz);
+				memcpy(dat+out.len,&(a->num),nSz); // little endian trickery
 				out.len+=nSz;
 				break;
 			default: break; // 1 and 2 go here
@@ -441,7 +451,7 @@ gso gsoParse(char*dat, size_t sz) {
 							_(handle)*where = _(findH)(&latest);
 							where->used = true;
 							where->typeByte = _.tBType;
-							where->num = _.n;
+							where->num = htole64(_.n); // i was accumulating the number in host order, not in little endian. duh.
 							_.inTypeByte = true;
 							_.iWantMore = false;
 							HLATEST;
