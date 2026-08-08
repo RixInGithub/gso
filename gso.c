@@ -379,7 +379,7 @@ gso gsoParse(char*dat, size_t sz) {
 	gso latest;
 	char*charBuf;
 	while ((count<sz)||(_.iWantMore)) {
-		char ch = dat[count];
+		unsigned char ch = dat[count];
 		switch ((int)_.inTypeByte) {
 			case 1:
 				_.tBType = ch&7;
@@ -445,7 +445,7 @@ gso gsoParse(char*dat, size_t sz) {
 					case 4:
 					case 5:
 					case 6:
-						_.n |= ch<<(_.collected*8);
+						_.n |= (uint64_t)ch<<(_.collected*8);
 						_.collected++;
 						if (_.collected==_.numLen) {
 							// diy handle creation!

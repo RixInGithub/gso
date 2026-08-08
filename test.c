@@ -45,4 +45,20 @@ int main() {
 		free(buf);
 		gsoFreeN(2, user, uCp);
 	#endif
+	#if TEST == 2
+		uint64_t thing = 1786195387835;
+		uint64_t*thingPtr;
+		char*buf;
+		size_t size;
+		gso t, tCp;
+		t = gsoFromU64(thing);
+		buf = gsoSrz(t, &size);
+		tCp = gsoParse(buf, size);
+		thingPtr = gsoGetIndex(tCp,0,NULL);
+		printf("before srz: %lu\n", thing);
+		printf("after srz: %lu\n", *thingPtr);
+		gsoFreeN(2, t, tCp);
+		free(thingPtr);
+		free(buf);
+	#endif
 }
